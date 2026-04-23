@@ -18,11 +18,11 @@ import pandas as pd
 import pyodbc
 import ttkbootstrap as ttk
 from sqlalchemy import create_engine
-from ttkbootstrap.constants import BOTH, E, END, EW, LEFT, NSEW, RIGHT, VERTICAL, W
+from ttkbootstrap.constants import BOTH, E, END, EW, LEFT, NSEW, RIGHT, VERTICAL, W, X
 from ttkbootstrap.dialogs import Messagebox
 
 APP_NAME = "FileUp"
-APP_VERSION = "1.0"
+APP_VERSION = "1.1"
 
 # Публичный репозиторий на GitHub для проверки обновлений (API releases/latest).
 # Переопределение: переменная окружения FILEUP_GITHUB_REPO.
@@ -108,8 +108,12 @@ def pick_release_download_url(release: dict) -> str:
     return page
 
 
-class CreateTableDialog(ttk.Toplevel):
-    """Диалог: схема, имя таблицы, опциональный Id IDENTITY, список столбцов."""
+class CreateTableDialog(tk.Toplevel):
+    """Диалог: схема, имя таблицы, опциональный Id IDENTITY, список столбцов.
+
+    Важно: используем tk.Toplevel(master), не ttkbootstrap.Toplevel(master) —
+    у последнего первый позиционный аргумент это title, из‑за чего родитель терялся и форма была пустой.
+    """
 
     def __init__(self, master: "UploadApp"):
         super().__init__(master)
@@ -132,7 +136,7 @@ class CreateTableDialog(ttk.Toplevel):
         ttk.Label(frm, text="Создание таблицы", font=("", 13, "bold")).pack(anchor=W)
 
         meta = ttk.Frame(frm)
-        meta.pack(fill=EW, **pad)
+        meta.pack(fill=X, **pad)
         meta.columnconfigure(1, weight=1)
         meta.columnconfigure(3, weight=1)
 
@@ -149,7 +153,7 @@ class CreateTableDialog(ttk.Toplevel):
         ).pack(anchor=W, **pad)
 
         hdr = ttk.Frame(frm)
-        hdr.pack(fill=EW, padx=0, pady=(10, 4))
+        hdr.pack(fill=X, padx=0, pady=(10, 4))
         ttk.Label(hdr, text="Столбцы", font=("", 11, "bold")).pack(side=LEFT)
         ttk.Button(hdr, text="+ Столбец", command=self._add_row, bootstyle="secondary-outline").pack(side=RIGHT)
 
@@ -161,63 +165,68 @@ class CreateTableDialog(ttk.Toplevel):
         tip.pack(anchor=W, pady=(0, 6))
 
         head = ttk.Frame(frm)
-        head.pack(fill=EW)
+        head.pack(fill=X)
         ttk.Label(head, text="Имя", width=26).pack(side=LEFT)
         ttk.Label(head, text="Тип данных", width=28).pack(side=LEFT, padx=(8, 0))
         ttk.Label(head, text="NULL").pack(side=LEFT, padx=(12, 0))
 
-        scroll_host = ttk.Frame(frm)
-        scroll_host.pack(fill=BOTH, expand=True, pady=(4, 8))
+        # Прокрутка: Canvas + tk.Frame (родитель строк). ttk.Frame внутри Canvas на Windows часто не рисуется.
+        scroll_wrap = ttk.Frame(frm)
+        scroll_wrap.pack(fill=BOTH, expand=True, pady=(4, 8))
+        scroll_wrap.columnconfigure(0, weight=1)
+        scroll_wrap.rowconfigure(0, weight=1)
 
-        canvas = tk.Canvas(scroll_host, highlightthickness=0, height=220)
-        vsb = ttk.Scrollbar(scroll_host, orient=VERTICAL, command=canvas.yview)
-        self._rows_inner = ttk.Frame(canvas)
-        self._rows_inner.bind(
-            "<Configure>",
-            lambda _e: canvas.configure(scrollregion=canvas.bbox("all")),
-        )
-        canvas.create_window((0, 0), window=self._rows_inner, anchor="nw")
-        canvas.configure(yscrollcommand=vsb.set)
+        try:
+            canvas_bg = master.style.colors.get("bg")
+        except Exception:
+            canvas_bg = "#ffffff"
 
-        canvas.pack(side=LEFT, fill=BOTH, expand=True)
-        vsb.pack(side=RIGHT, fill="y")
+        self._rows_canvas = tk.Canvas(scroll_wrap, highlightthickness=0, height=220, bg=canvas_bg)
+        vsb = ttk.Scrollbar(scroll_wrap, orient=VERTICAL, command=self._rows_canvas.yview)
+        self._rows_canvas.configure(yscrollcommand=vsb.set)
+
+        self._rows_inner = tk.Frame(self._rows_canvas, bg=canvas_bg)
+        self._canvas_win = self._rows_canvas.create_window((0, 0), window=self._rows_inner, anchor="nw")
+
+        def _sync_canvas_inner(event):
+            self._rows_canvas.itemconfigure(self._canvas_win, width=max(event.width, 1))
+
+        def _sync_scrollregion(_event=None):
+            self._rows_canvas.configure(scrollregion=self._rows_canvas.bbox("all") or (0, 0, 0, 0))
+
+        self._rows_canvas.bind("<Configure>", _sync_canvas_inner)
+        self._rows_inner.bind("<Configure>", lambda _e: _sync_scrollregion())
+
+        self._rows_canvas.grid(row=0, column=0, sticky=NSEW)
+        vsb.grid(row=0, column=1, sticky="ns")
 
         def _wheel(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            self._rows_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
-        def _bind_wheel(_e):
-            canvas.bind_all("<MouseWheel>", _wheel)
-
-        def _unbind_wheel(_e):
-            canvas.unbind_all("<MouseWheel>")
-
-        canvas.bind("<Enter>", _bind_wheel)
-        canvas.bind("<Leave>", _unbind_wheel)
+        self._rows_canvas.bind("<Enter>", lambda _e: self._rows_canvas.bind_all("<MouseWheel>", _wheel))
+        self._rows_canvas.bind("<Leave>", lambda _e: self._rows_canvas.unbind_all("<MouseWheel>"))
 
         btn_row = ttk.Frame(frm)
-        btn_row.pack(fill=EW, pady=(8, 0))
+        btn_row.pack(fill=X, pady=(8, 0))
         ttk.Button(btn_row, text="Удалить последний столбец", command=self._remove_last_row, bootstyle="secondary").pack(
             side=LEFT
         )
         ttk.Button(btn_row, text="Создать таблицу", command=self._apply, bootstyle="success").pack(side=RIGHT)
         ttk.Button(btn_row, text="Отмена", command=self._on_close, bootstyle="outline").pack(side=RIGHT, padx=(0, 8))
 
-        self._canvas = canvas
         self._add_row()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _on_close(self):
         try:
-            for w in (getattr(self, "_canvas", None),):
-                if w is not None:
-                    w.unbind_all("<MouseWheel>")
+            self._rows_canvas.unbind_all("<MouseWheel>")
         except tk.TclError:
             pass
         self.destroy()
 
     def _add_row(self):
         row_f = ttk.Frame(self._rows_inner)
-        row_f.pack(fill=EW, pady=2)
+        row_f.pack(fill=X, pady=2)
 
         name_v = tk.StringVar()
         type_v = tk.StringVar(value="INT")
@@ -307,6 +316,7 @@ class UploadApp(ttk.Window):
         self.title(f"{APP_NAME} — Excel → SQL Server")
         self.geometry("920x740")
         self.minsize(780, 620)
+        self.resizable(True, True)
 
         self.file_path = tk.StringVar()
         self.sheet_name = tk.StringVar()
@@ -494,7 +504,7 @@ class UploadApp(ttk.Window):
         self._update_banner_host.grid(row=0, column=0, sticky=EW, padx=18, pady=(14, 0))
 
         wrap = ttk.Labelframe(self._update_banner_host, text=" Обновление ", padding=(12, 10))
-        wrap.pack(fill=EW)
+        wrap.pack(fill=X)
         wrap.columnconfigure(0, weight=1)
 
         msg = f"Доступна новая версия {remote_ver}. Установлено: v{APP_VERSION}. Скачайте сборку со страницы релиза GitHub."
