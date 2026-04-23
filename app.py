@@ -24,9 +24,9 @@ from ttkbootstrap.dialogs import Messagebox
 APP_NAME = "FileUp"
 APP_VERSION = "0.9"
 
-# После создания репозитория на GitHub укажите «владелец/имя» (например "octocat/FileUp").
-# Проверка обновлений через API releases/latest. Переопределение: переменная окружения FILEUP_GITHUB_REPO.
-GITHUB_REPO_FOR_UPDATES = ""
+# Публичный репозиторий на GitHub для проверки обновлений (API releases/latest).
+# Переопределение: переменная окружения FILEUP_GITHUB_REPO.
+GITHUB_REPO_FOR_UPDATES = "ljosefl/FileUp"
 
 # Распространённые типы SQL Server (полное объявление для CREATE TABLE)
 SQL_TYPES = (
