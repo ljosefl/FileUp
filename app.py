@@ -18,11 +18,11 @@ import pandas as pd
 import pyodbc
 import ttkbootstrap as ttk
 from sqlalchemy import create_engine
-from ttkbootstrap.constants import BOTH, END, EW, LEFT, NSEW, RIGHT, VERTICAL, W
+from ttkbootstrap.constants import BOTH, E, END, EW, LEFT, NSEW, RIGHT, VERTICAL, W
 from ttkbootstrap.dialogs import Messagebox
 
 APP_NAME = "FileUp"
-APP_VERSION = "0.9"
+APP_VERSION = "1.0"
 
 # Публичный репозиторий на GitHub для проверки обновлений (API releases/latest).
 # Переопределение: переменная окружения FILEUP_GITHUB_REPO.
