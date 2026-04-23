@@ -22,7 +22,7 @@ from ttkbootstrap.constants import BOTH, E, END, EW, LEFT, NSEW, RIGHT, VERTICAL
 from ttkbootstrap.dialogs import Messagebox
 
 APP_NAME = "FileUp"
-APP_VERSION = "1.1"
+APP_VERSION = "1.2"
 
 # Публичный репозиторий на GitHub для проверки обновлений (API releases/latest).
 # Переопределение: переменная окружения FILEUP_GITHUB_REPO.
@@ -87,15 +87,41 @@ def _resolve_github_repo() -> str | None:
     return None
 
 
-def fetch_latest_github_release(repo: str) -> dict | None:
-    """GET /repos/{owner}/{repo}/releases/latest"""
-    url = f"https://api.github.com/repos/{repo}/releases/latest"
-    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": f"{APP_NAME}/{APP_VERSION}"})
+def _github_request_json(url: str):
+    req = urllib.request.Request(
+        url,
+        headers={"Accept": "application/vnd.github+json", "User-Agent": f"{APP_NAME}/{APP_VERSION}"},
+    )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read().decode())
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, OSError):
         return None
+
+
+def fetch_latest_github_release(repo: str) -> dict | None:
+    """GET /repos/{owner}/{repo}/releases/latest (только если есть хотя бы один опубликованный Release)."""
+    url = f"https://api.github.com/repos/{repo}/releases/latest"
+    data = _github_request_json(url)
+    return data if isinstance(data, dict) else None
+
+
+def fetch_github_releases_page(repo: str, per_page: int = 20) -> list[dict]:
+    """Список опубликованных релизов (новые обычно первыми)."""
+    url = f"https://api.github.com/repos/{repo}/releases?per_page={per_page}"
+    data = _github_request_json(url)
+    if isinstance(data, list):
+        return [r for r in data if isinstance(r, dict) and not r.get("draft")]
+    return []
+
+
+def resolve_latest_release(repo: str) -> dict | None:
+    """Последний релиз: /latest или первый элемент из списка (если /latest недоступен при одном только теге без Release)."""
+    latest = fetch_latest_github_release(repo)
+    if latest:
+        return latest
+    items = fetch_github_releases_page(repo)
+    return items[0] if items else None
 
 
 def pick_release_download_url(release: dict) -> str:
@@ -355,10 +381,19 @@ class UploadApp(ttk.Window):
 
         foot = ttk.Frame(outer, padding=(18, 10))
         foot.grid(row=2, column=0, sticky=EW)
-        foot.columnconfigure(0, weight=1)
+        foot.columnconfigure(1, weight=1)
 
         ttk.Label(foot, text=APP_NAME, font=("Segoe UI", 10)).grid(row=0, column=0, sticky=W)
-        ttk.Label(foot, text=f"v{APP_VERSION}", bootstyle="secondary").grid(row=0, column=1, sticky=E)
+
+        foot_right = ttk.Frame(foot)
+        foot_right.grid(row=0, column=2, sticky=E)
+        ttk.Button(
+            foot_right,
+            text="Проверить обновления",
+            command=self._manual_check_updates,
+            bootstyle="link",
+        ).pack(side=LEFT, padx=(0, 14))
+        ttk.Label(foot_right, text=f"v{APP_VERSION}", bootstyle="secondary").pack(side=LEFT)
 
         title_f = ttk.Frame(root)
         title_f.grid(row=0, column=0, sticky=EW, pady=(0, 12))
@@ -485,7 +520,7 @@ class UploadApp(ttk.Window):
             return
 
         def worker():
-            data = fetch_latest_github_release(repo)
+            data = resolve_latest_release(repo)
             if not data:
                 return
             tag = (data.get("tag_name") or "").strip()
@@ -494,6 +529,48 @@ class UploadApp(ttk.Window):
             url = pick_release_download_url(data)
             label = tag.lstrip("vV")
             self.after(0, lambda v=label, u=url: self._show_update_banner(v, u))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _manual_check_updates(self):
+        """Ручная проверка: показывает сообщение или баннер, если есть более новый релиз."""
+        repo = _resolve_github_repo()
+        if not repo:
+            Messagebox.show_warning(
+                "Не задан репозиторий GitHub для проверки (константа GITHUB_REPO_FOR_UPDATES или переменная FILEUP_GITHUB_REPO).",
+                "Обновления",
+            )
+            return
+
+        def worker():
+            rel = resolve_latest_release(repo)
+
+            def ui():
+                if not rel:
+                    Messagebox.show_warning(
+                        "Не удалось получить данные о релизах (сеть или ответ GitHub).\n\n"
+                        "На GitHub должен быть опубликован Release со страницы Releases "
+                        "(одного только git-тега недостаточно для API /releases/latest).\n\n"
+                        f"Репозиторий: {repo}",
+                        "Обновления",
+                    )
+                    return
+                tag = (rel.get("tag_name") or "").strip()
+                if not tag:
+                    Messagebox.show_info("Релиз без номера версии в tag_name.", "Обновления")
+                    return
+                remote_label = tag.lstrip("vV")
+                url = pick_release_download_url(rel)
+                if _version_is_newer(tag, APP_VERSION):
+                    self._show_update_banner(remote_label, url)
+                    self.log(f"Найдена новая версия на GitHub: {remote_label} (установлено v{APP_VERSION}).")
+                else:
+                    Messagebox.show_info(
+                        f"Установлена актуальная версия v{APP_VERSION}.\nПоследний релиз на GitHub: {remote_label}.",
+                        "Обновления",
+                    )
+
+            self.after(0, ui)
 
         threading.Thread(target=worker, daemon=True).start()
 
