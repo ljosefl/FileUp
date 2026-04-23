@@ -1,0 +1,6 @@
+pandas
+sqlalchemy
+pyodbc
+openpyxl
+pyinstaller
+ttkbootstrap>=1.10
