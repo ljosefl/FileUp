@@ -1,5 +1,7 @@
 # FileUp
 
+Репозиторий: https://github.com/ljosefl/FileUp  
+
 Настольное приложение для загрузки листов **Excel** в **Microsoft SQL Server** (создание таблиц в UI, `replace` / `append`).
 
 ## Сборка (Windows)

@@ -498,7 +498,7 @@ class UploadApp(ttk.Window):
         wrap.columnconfigure(0, weight=1)
 
         msg = f"Доступна новая версия {remote_ver}. Установлено: v{APP_VERSION}. Скачайте сборку со страницы релиза GitHub."
-        ttk.Label(wrap, text=msg, wraplength=720, anchor=W, bootstyle="default").grid(row=0, column=0, sticky=EW)
+        ttk.Label(wrap, text=msg, wraplength=720, anchor=W).grid(row=0, column=0, sticky=EW)
 
         btns = ttk.Frame(wrap)
         btns.grid(row=1, column=0, sticky=W, pady=(10, 0))
